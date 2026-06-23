@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Dashboard de Gestão à Vista — IA 3D</title>
+<title id="page-title">Dashboard de Gestão à Vista</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
@@ -88,6 +88,13 @@
   .trend.up { color: var(--green); }
   .trend.down { color: #ef4444; }
   .trend.flat { color: var(--text-ter); }
+
+  /* BRAND SWITCHER */
+  .brand-switcher { display: flex; align-items: center; gap: 4px; background: var(--surface2); border: 1px solid var(--border-strong); border-radius: var(--radius-sm); padding: 3px; }
+  .brand-switcher-label { font-size: 10px; color: var(--text-ter); padding: 0 6px; white-space: nowrap; }
+  .brand-btn { font-size: 11px; font-weight: 500; padding: 4px 11px; border-radius: 4px; border: none; background: transparent; color: var(--text-sec); cursor: pointer; font-family: var(--font); transition: background .15s, color .15s; white-space: nowrap; }
+  .brand-btn:hover { background: var(--surface3); color: var(--text); }
+  .brand-btn.active { background: var(--accent); color: #fff; font-weight: 600; }
 
   /* KANBAN */
   .kanban-section { margin-bottom: 28px; }
@@ -191,20 +198,25 @@
 <!-- HEADER -->
 <header class="header">
   <div class="header-left">
-    <span class="logo-pill">IA 3D</span>
+    <span class="logo-pill" id="brand-pill">IA 3D</span>
     <div>
       <div class="header-title">Dashboard de Gestão à Vista</div>
-      <div class="header-sub">Acompanhamento diário dos indicadores operacionais, conversão e impacto financeiro</div>
+      <div class="header-sub" id="brand-sub">Acompanhamento diário dos indicadores operacionais, conversão e impacto financeiro</div>
     </div>
   </div>
   <div class="header-right">
+    <div class="brand-switcher">
+      <span class="brand-switcher-label">Marca</span>
+      <button class="brand-btn" id="sw-shelf" onclick="switchBrand('shelf')">Shelf</button>
+      <button class="brand-btn" id="sw-maria" onclick="switchBrand('maria-lavadeira')">Maria Lavadeira</button>
+    </div>
     <div class="status-live"><span class="dot-live"></span> Operação ativa</div>
     <span id="header-date"></span>
-    <button class="btn-hist" onclick="openHist()">
+    <button class="btn-hist" id="btn-hist-wrap" onclick="openHist()">
       <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M7 1a6 6 0 100 12A6 6 0 007 1zm0 2v4l3 2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
       Histórico <span id="hist-count-badge" style="background:var(--accent);color:#fff;font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;display:none"></span>
     </button>
-    <button class="btn-save" onclick="saveAll()">Salvar</button>
+    <button class="btn-save" id="btn-salvar" onclick="saveAll()">Salvar</button>
   </div>
 </header>
 
@@ -371,13 +383,8 @@ const kpiDefs = {
 let kpiState = {};
 ['vol','conv','rec'].forEach(g => kpiDefs[g].forEach(k => { kpiState[k.id] = { val: 0, prev: 0 }; }));
 
-// Load from storage
-(function loadKPI(){
-  const saved = localStorage.getItem('dash_kpi');
-  if (saved) kpiState = JSON.parse(saved);
-})();
-
-function saveKPIToStorage() { localStorage.setItem('dash_kpi', JSON.stringify(kpiState)); }
+// Load happens in applyBrand() after namespace is known
+function saveKPIToStorage() { localStorage.setItem((window.__STORE||'dash_') + 'kpi', JSON.stringify(kpiState)); }
 
 function trendHTML(diff) {
   if (diff > 0) return `<span class="trend up"><svg viewBox="0 0 12 12" fill="none"><path d="M2 9L10 3M10 3H5M10 3V8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>+${Math.abs(diff)}</span>`;
@@ -385,25 +392,7 @@ function trendHTML(diff) {
   return `<span class="trend flat">—</span>`;
 }
 
-function renderKPIs(group) {
-  const container = document.getElementById(group + '-rows');
-  container.innerHTML = kpiDefs[group].map(k => {
-    const s = kpiState[k.id];
-    const diff = s.val - s.prev;
-    const isR = k.fmt === 'R$';
-    return `<div class="kpi-row">
-      <span class="kpi-label">${k.label}</span>
-      <div class="kpi-right">
-        ${trendHTML(diff)}
-        <div class="kpi-input-wrap">
-          <input class="kpi-input${isR?' has-unit':''}" type="number" min="0" value="${s.val}"
-            id="inp-${k.id}" onchange="updateKPI('${k.id}','${group}',this.value)">
-          ${isR ? '<span class="kpi-unit">R$</span>' : ''}
-        </div>
-      </div>
-    </div>`;
-  }).join('');
-}
+// renderKPIs, renderCard, renderKanban: defined in BRAND FLAG section below
 
 function updateKPI(id, group, val) {
   const s = kpiState[id];
@@ -417,8 +406,6 @@ function updateKPI(id, group, val) {
   renderKPIs(group);
   saveKPIToStorage();
 }
-
-['vol','conv','rec'].forEach(g => renderKPIs(g));
 
 // ── KANBAN ────────────────────────────────────────────────────────────────────
 const defaultCards = [
@@ -442,19 +429,8 @@ let histFilter = 'all';
 
 function today() { return new Date().toISOString().split('T')[0]; }
 
-// Load cards
-(function loadCards(){
-  const saved = localStorage.getItem('dash_cards');
-  if (saved) {
-    const parsed = JSON.parse(saved);
-    cards = parsed.cards;
-    nextId = parsed.nextId || 11;
-  } else {
-    cards = defaultCards.map(c => ({...c}));
-  }
-})();
-
-function saveCards() { localStorage.setItem('dash_cards', JSON.stringify({ cards, nextId })); }
+// Load happens in applyBrand() after namespace is known
+function saveCards() { localStorage.setItem((window.__STORE||'dash_') + 'cards', JSON.stringify({ cards, nextId })); }
 
 const stageLabel = { backlog:'Backlog', teste:'Em teste', validado:'Validado', descartado:'Descartado' };
 const prevStage  = { teste:'backlog', validado:'teste', descartado:'validado' };
@@ -471,39 +447,9 @@ function isDueOverdue(due) {
   return new Date(due) < new Date(today());
 }
 
-function renderCard(card) {
-  const pStage = prevStage[card.stage];
-  const nStage = nextSt[card.stage];
-  const overdue = isDueOverdue(card.due);
-  return `<div class="kcard" id="kc-${card.id}" draggable="true"
-      ondragstart="onDragStart(event,${card.id})"
-      ondragend="onDragEnd(event)">
-    <div class="kcard-title">${card.title}</div>
-    ${card.hyp ? `<div class="kcard-hyp">"${card.hyp.length > 70 ? card.hyp.slice(0,70)+'…' : card.hyp}"</div>` : ''}
-    ${card.result ? `<div class="kcard-result">✓ ${card.result.length > 60 ? card.result.slice(0,60)+'…' : card.result}</div>` : ''}
-    <div class="kcard-meta">
-      ${card.owner ? `<span class="kcard-chip owner-chip">👤 ${card.owner}</span>` : ''}
-      ${card.due   ? `<span class="kcard-chip due-chip${overdue?' overdue':''}">🗓 Entrega: ${fmtDate(card.due)}${overdue?' ⚠️':''}</span>` : ''}
-      ${card.date  ? `<span class="kcard-chip">▶ Início: ${fmtDate(card.date)}</span>` : ''}
-    </div>
-    <div class="kcard-actions">
-      ${pStage ? `<button class="kcard-btn" onclick="moveCard(${card.id},'${pStage}')">← ${stageLabel[pStage]}</button>` : ''}
-      ${nStage ? `<button class="kcard-btn" onclick="moveCard(${card.id},'${nStage}')">${stageLabel[nStage]} →</button>` : ''}
-      <button class="kcard-btn edit-btn" onclick="openEditModal(${card.id})">Editar</button>
-      <button class="kcard-btn del-btn" onclick="deleteCard(${card.id})">✕</button>
-    </div>
-  </div>`;
-}
+// renderCard and renderKanban defined in BRAND FLAG section below
 
-function renderKanban() {
-  ['backlog','teste','validado','descartado'].forEach(stage => {
-    const col = document.getElementById('cards-' + stage);
-    const stageCards = cards.filter(c => c.stage === stage);
-    col.innerHTML = stageCards.map(c => renderCard(c)).join('');
-    document.getElementById('cnt-' + stage).textContent = stageCards.length;
-  });
-}
-renderKanban();
+// Initial render handled by applyBrand() at bottom of script
 
 function moveCard(id, toStage) {
   if (toStage === 'teste' && cards.filter(c => c.stage === 'teste').length >= 2) {
@@ -626,13 +572,8 @@ function saveCard() {
 // ── HISTÓRICO ─────────────────────────────────────────────────────────────────
 let history = [];
 
-(function loadHist(){
-  const saved = localStorage.getItem('dash_hist');
-  if (saved) history = JSON.parse(saved);
-  updateHistBadge();
-})();
-
-function saveHist() { localStorage.setItem('dash_hist', JSON.stringify(history)); }
+// Load happens in applyBrand() after namespace is known
+function saveHist() { localStorage.setItem((window.__STORE||'dash_') + 'hist', JSON.stringify(history)); }
 
 function addHist(type, desc) {
   const now = new Date();
@@ -724,6 +665,115 @@ function showToast(msg) {
 // ── DATE ──────────────────────────────────────────────────────────────────────
 document.getElementById('header-date').textContent =
   new Date().toLocaleDateString('pt-BR', { weekday:'short', day:'2-digit', month:'short', year:'numeric' });
+
+// ── BRAND FLAG ────────────────────────────────────────────────────────────────
+const BRANDS = {
+  'shelf': {
+    pill:  'Shelf',
+    sub:   'Shelf Minimercado 24h — Operação IA aplicada em máquinas 3D',
+    store: 'shelf_',
+  },
+  'maria-lavadeira': {
+    pill:  'Maria Lavadeira',
+    sub:   'Maria Lavadeira — Operação IA aplicada em máquinas 3D',
+    store: 'ml_',
+  },
+};
+
+function switchBrand(marca) {
+  const url = new URL(window.location.href);
+  url.searchParams.set('marca', marca);
+  window.location.href = url.toString();
+}
+
+function renderKPIs(group) {
+  const container = document.getElementById(group + '-rows');
+  container.innerHTML = kpiDefs[group].map(k => {
+    const s = kpiState[k.id];
+    const diff = s.val - s.prev;
+    const isR = k.fmt === 'R$';
+    return `<div class="kpi-row">
+      <span class="kpi-label">${k.label}</span>
+      <div class="kpi-right">
+        ${trendHTML(diff)}
+        <div class="kpi-input-wrap">
+          <input class="kpi-input${isR?' has-unit':''}" type="number" min="0" value="${s.val}"
+            id="inp-${k.id}" onchange="updateKPI('${k.id}','${group}',this.value)">
+          ${isR ? '<span class="kpi-unit">R$</span>' : ''}
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderCard(card) {
+  const pStage = prevStage[card.stage];
+  const nStage = nextSt[card.stage];
+  const overdue = isDueOverdue(card.due);
+  return `<div class="kcard" id="kc-${card.id}" draggable="true"
+      ondragstart="onDragStart(event,${card.id})"
+      ondragend="onDragEnd(event)">
+    <div class="kcard-title">${card.title}</div>
+    ${card.hyp ? `<div class="kcard-hyp">"${card.hyp.length > 70 ? card.hyp.slice(0,70)+'…' : card.hyp}"</div>` : ''}
+    ${card.result ? `<div class="kcard-result">✓ ${card.result.length > 60 ? card.result.slice(0,60)+'…' : card.result}</div>` : ''}
+    <div class="kcard-meta">
+      ${card.owner ? `<span class="kcard-chip owner-chip">👤 ${card.owner}</span>` : ''}
+      ${card.due   ? `<span class="kcard-chip due-chip${overdue?' overdue':''}">🗓 Entrega: ${fmtDate(card.due)}${overdue?' ⚠️':''}</span>` : ''}
+      ${card.date  ? `<span class="kcard-chip">▶ Início: ${fmtDate(card.date)}</span>` : ''}
+    </div>
+    <div class="kcard-actions">
+      ${pStage ? `<button class="kcard-btn" onclick="moveCard(${card.id},'${pStage}')">← ${stageLabel[pStage]}</button>` : ''}
+      ${nStage ? `<button class="kcard-btn" onclick="moveCard(${card.id},'${nStage}')">${stageLabel[nStage]} →</button>` : ''}
+      <button class="kcard-btn edit-btn" onclick="openEditModal(${card.id})">Editar</button>
+      <button class="kcard-btn del-btn" onclick="deleteCard(${card.id})">✕</button>
+    </div>
+  </div>`;
+}
+
+function renderKanban() {
+  ['backlog','teste','validado','descartado'].forEach(stage => {
+    const col = document.getElementById('cards-' + stage);
+    const stageCards = cards.filter(c => c.stage === stage);
+    col.innerHTML = stageCards.map(c => renderCard(c)).join('');
+    document.getElementById('cnt-' + stage).textContent = stageCards.length;
+  });
+}
+
+// ── applyBrand ────────────────────────────────────────────────────────────────
+(function applyBrand() {
+  const param = new URLSearchParams(window.location.search).get('marca') || '';
+  const brand = BRANDS[param.toLowerCase()] || BRANDS['shelf'];
+
+  document.getElementById('brand-pill').textContent = brand.pill;
+  document.getElementById('brand-sub').textContent  = brand.sub;
+  document.title = 'Dashboard de Gestão à Vista — ' + brand.pill;
+  window.__STORE = brand.store;
+
+  // Botão ativo no switcher
+  const activeKey = param.toLowerCase();
+  document.getElementById('sw-shelf').classList.toggle('active', activeKey !== 'maria-lavadeira');
+  document.getElementById('sw-maria').classList.toggle('active', activeKey === 'maria-lavadeira');
+
+  // Carrega KPIs
+  const kpiSaved = localStorage.getItem(window.__STORE + 'kpi');
+  if (kpiSaved) kpiState = JSON.parse(kpiSaved);
+  ['vol','conv','rec'].forEach(g => renderKPIs(g));
+
+  // Carrega cards
+  const cardsSaved = localStorage.getItem(window.__STORE + 'cards');
+  if (cardsSaved) {
+    const p = JSON.parse(cardsSaved);
+    cards = p.cards; nextId = p.nextId || 11;
+  } else {
+    cards = defaultCards.map(c => ({...c}));
+  }
+  renderKanban();
+
+  // Carrega histórico
+  const histSaved = localStorage.getItem(window.__STORE + 'hist');
+  if (histSaved) history = JSON.parse(histSaved);
+  updateHistBadge();
+})();
 </script>
 </body>
 </html>
